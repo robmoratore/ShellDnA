@@ -62,7 +62,7 @@ df <- left_join(df, df_loadmean_prevweek, by = c("year", "weekofyear", "split"))
   select(date, load, loadmean_prevweek, everything()) %>%
   select(-split)
 
-df$temp[c(23049, 8678, 23456)] <- NA
+df$precipitation[c(23049, 8678, 23456, 5345, 145234, 123905)] <- NA
 df$temp[c(1123, 9048, 10485)] <- df$temp[c(1123, 9048, 129485)]*17
 
 write.table(df, file = "../PJM_Load.csv", sep = ",", row.names = FALSE, na = "")
