@@ -11,7 +11,8 @@ df_wx <- (lapply(wx_f, function(x) read.csv(x, stringsAsFactors = FALSE)))
 df_wx <- do.call("rbind", df_wx) %>%
   rename(month=mo,
          dayofmonth=da,
-         precipitation=prcp)
+         precipitation=prcp) %>%
+  mutate(temp = (temp - 32)*(5/9))
 
 df <- read.csv(file, sep=",", stringsAsFactors = FALSE) %>%
   rename(date=Datetime,
@@ -20,11 +21,7 @@ df <- read.csv(file, sep=",", stringsAsFactors = FALSE) %>%
   mutate(date=ymd_hms(date),
          split=ifelse(date<="2015-01-01", "train", "test")) %>%
   group_by(split) %>%
-  mutate(load_1h=lag(load, 1),
-         loadmean_6h = rollmean(load, 6, na.pad = TRUE, align = "right"),
-         loadmean_12h = rollmean(load, 12, na.pad = TRUE, align = "right"),
-         loadmean_24h = rollmean(load, 24, na.pad = TRUE, align = "right"),
-         load_peak = rnorm(n() , mean=30000, sd=1000)) %>%
+  mutate(load_peak = rnorm(n() , mean=30000, sd=1000)) %>%
   ungroup() %>%
   mutate(year=year(date),
          quarter=quarter(date),
@@ -52,15 +49,25 @@ df <- read.csv(file, sep=",", stringsAsFactors = FALSE) %>%
          precipitation=as.numeric(na.interp(precipitation))) %>%
   arrange(date)
 
-df$load_1h[c(23049, 8678, 23456)] <- NA
-df$load_1h[c(1123, 9048, 10485)] <- df$load_1h[c(1123, 9048, 129485)]*7.145
+df_loadmean_prevweek <- df %>%
+  group_by(year, weekofyear) %>%
+  summarise(loadmean_prevweek = mean(load, na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(year, weekofyear) %>%
+  mutate(loadmean_prevweek = lag(loadmean_prevweek, 1))
 
-write.table(df, file = "PJM_Load.csv", sep = ",", row.names = FALSE, na = "")
+df <- left_join(df, df_loadmean_prevweek, by = c("year", "weekofyear")) %>%
+  select(date, load, loadmean_prevweek, everything())
+
+df$temp[c(23049, 8678, 23456)] <- NA
+df$temp[c(1123, 9048, 10485)] <- df$temp[c(1123, 9048, 129485)]*17
+
+write.table(df, file = "../PJM_Load.csv", sep = ",", row.names = FALSE, na = "")
 
 ggplot(df %>% group_by(year, month, dayofmonth, season) %>% summarise(load=sum(load), temp=mean(temp)), aes(x=temp, y=load, color=as.factor(season))) +
   geom_point()
 
-ggplot(df, aes(x=date, y=load_1h)) +
+ggplot(df, aes(x=date, y=temp)) +
   geom_point()
 
 training <- df %>% filter(date <= "2015-01-01")
