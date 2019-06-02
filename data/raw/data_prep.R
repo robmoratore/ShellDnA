@@ -23,7 +23,8 @@ df <- read.csv(file, sep=",", stringsAsFactors = FALSE) %>%
   group_by(split) %>%
   mutate(load_peak = rnorm(n() , mean=30000, sd=1000)) %>%
   ungroup() %>%
-  mutate(year=year(date),
+  mutate(load = ifelse(load<=18750, 18503, load),
+         year=year(date),
          quarter=quarter(date),
          month=month(date),
          weekofyear=week(date),
@@ -43,31 +44,30 @@ df <- read.csv(file, sep=",", stringsAsFactors = FALSE) %>%
                           season=="summer"~3,
                           season=="autumm"~4,
                           TRUE~5)) %>%
-  select(-sunrise, -sunset, -split) %>%
+  select(-sunrise, -sunset) %>%
   left_join(., df_wx, by = c("year", "month", "dayofmonth")) %>%
   mutate(temp=as.numeric(na.interp(temp)),
          precipitation=as.numeric(na.interp(precipitation))) %>%
   arrange(date)
 
 df_loadmean_prevweek <- df %>%
-  group_by(year, weekofyear) %>%
-  summarise(loadmean_prevweek = mean(load, na.rm = TRUE)) %>%
-  ungroup() %>%
   arrange(year, weekofyear) %>%
-  mutate(loadmean_prevweek = lag(loadmean_prevweek, 1))
+  group_by(year, weekofyear, split) %>%
+  summarise(loadmean_prevweek = mean(load, na.rm = TRUE)) %>%
+  group_by(split) %>%
+  mutate(loadmean_prevweek = lag(loadmean_prevweek, 1)) %>%
+  ungroup()
 
-df <- left_join(df, df_loadmean_prevweek, by = c("year", "weekofyear")) %>%
-  select(date, load, loadmean_prevweek, everything())
+df <- left_join(df, df_loadmean_prevweek, by = c("year", "weekofyear", "split")) %>%
+  select(date, load, loadmean_prevweek, everything()) %>%
+  select(-split)
 
 df$temp[c(23049, 8678, 23456)] <- NA
 df$temp[c(1123, 9048, 10485)] <- df$temp[c(1123, 9048, 129485)]*17
 
 write.table(df, file = "../PJM_Load.csv", sep = ",", row.names = FALSE, na = "")
 
-ggplot(df %>% group_by(year, month, dayofmonth, season) %>% summarise(load=sum(load), temp=mean(temp)), aes(x=temp, y=load, color=as.factor(season))) +
-  geom_point()
-
-ggplot(df, aes(x=date, y=temp)) +
+ggplot(df, aes(x=date, y=loadmean_prevweek)) +
   geom_point()
 
 training <- df %>% filter(date <= "2015-01-01")
